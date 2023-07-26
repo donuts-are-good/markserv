@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strings"
+	"path/filepath"
 )
 
 type Config struct {
@@ -47,36 +47,40 @@ func loadConfig(file string) (Config, error) {
 
 func handleRequest(config Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		path := fmt.Sprintf("%s%s", config.Web, r.URL.Path)
+		cleanedPath := filepath.Clean(r.URL.Path)
 
-		if strings.Contains(path, "..") {
-			http.Error(w, "Invalid path", 400)
+		if cleanedPath == "/" {
+			http.Redirect(w, r, "/index.md", http.StatusMovedPermanently)
 			return
 		}
 
-		if strings.HasSuffix(path, "/") {
-			path = path + "index.md"
-		} else {
-			validExtension := false
-			for _, ext := range config.AllowedFileTypes {
-				if strings.HasSuffix(path, ext) {
-					validExtension = true
-					break
-				}
+		path := filepath.Join(config.Web, cleanedPath)
+
+		validExtension := false
+		for _, ext := range config.AllowedFileTypes {
+			if filepath.Ext(path) == ext {
+				validExtension = true
+				break
 			}
-			if !validExtension {
-				http.Error(w, "Invalid file type", 400)
-				return
-			}
+		}
+		if !validExtension {
+			http.Error(w, "Invalid file type", 400)
+			return
 		}
 
 		file, err := os.Open(path)
 		if err != nil {
-			http.Error(w, "File not found", 404)
+			http.Error(w, "Oops! 404 document not found", 404)
 			return
 		}
 		defer file.Close()
 
-		io.Copy(w, file)
+		// w.Header().Add("Cache-Control", "no-cache")
+		w.Header().Add("Cache-Control", "public, max-age=31536000")
+
+		if _, err := io.Copy(w, file); err != nil {
+			fmt.Printf("Failed to write response: %v\n", err)
+			http.Error(w, "Failed to write response", 500)
+		}
 	}
 }
