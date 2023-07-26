@@ -1,0 +1,5 @@
+{
+	"port": "88",
+	"web": "./web",
+	"allowedFileTypes": [".md", ".txt"]
+}
